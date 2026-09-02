@@ -1,3 +1,2 @@
-This is an iOS threat emulation project
+iOS threat emulation project
 
-Features: reverse shell
