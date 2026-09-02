@@ -13,7 +13,6 @@ Never use synchronous POSIX networking APIs on the main thread of a GUI applicat
 Note: POSIX networking does not activate the cellular radio on iOS. For this reason, the POSIX networking API is generally discouraged in iOS.
  */
 mod sockets {
-    use libc;
     /*
 
     libc:: pub unsafe extern "C" fn socket(
