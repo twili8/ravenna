@@ -39,8 +39,6 @@ mod sockets {
                 if let std::net::IpAddr::V4(ipv4) = ip {
                     addr.sin_family = libc::AF_INET as u16;
                     addr.sin_port = libc::htons(port);
-
-                    // Ipv4Addr has the .octets() method
                     let octets = ipv4.octets();
                     addr.sin_addr.s_addr = u32::from_be_bytes(octets).to_be();
                 } else {
@@ -107,18 +105,14 @@ mod sockets {
             data_len: libc::size_t,
         ) -> ssize_t {
             // this function sends data to network sockets created with _sock!
-            unsafe {
-                return libc::write(_sock, data as *const c_void, data_len.try_into().unwrap());
-            }
+            unsafe { libc::write(_sock, data as *const c_void, data_len.try_into().unwrap()) }
         }
         pub fn read(
             _sock: std::os::fd::RawFd,
             buffer: *mut u8,
             buffer_len: libc::size_t,
         ) -> ssize_t {
-            unsafe {
-                return libc::read(_sock, buffer as *mut c_void, buffer_len);
-            }
+            unsafe { libc::read(_sock, buffer as *mut c_void, buffer_len) }
         }
     }
 }
