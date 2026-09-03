@@ -133,12 +133,36 @@ impl Sock {
     }
 
     pub fn read(&self, buffer: &[u8]) -> libc::ssize_t {
+        let res;
         unsafe {
-            libc::read(
+            res = libc::read(
                 self.sock,
                 buffer.as_ptr() as *mut std::ffi::c_void,
                 buffer.len() as libc::size_t,
-            )
+            );
         }
+        if res < 0 {
+            // error path
+            eprintln!("Could not read, error: ({res})");
+            self::Sock::_err();
+        }
+
+        res
+    }
+
+    pub fn close(&self) -> libc::ssize_t {
+        // man 2 close
+        let res;
+
+        unsafe {
+            res = libc::close(self.sock);
+        }
+
+        if (res < 0) {
+            eprintln!("Could not close socket.");
+            self::Sock::_err();
+        }
+
+        res as libc::ssize_t
     }
 }
