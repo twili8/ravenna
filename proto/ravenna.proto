@@ -1,0 +1,22 @@
+syntax = "proto3"; package ravenna;
+message Beacon {
+  string implant_id = 1;
+}
+message ShellStart {
+  string implant_id = 1; // server to implant : "give me shell"
+}
+message ShellData {
+  bytes chunk = 1; // bidirectional pty/stdout/stderr
+}
+message ShellExit {
+  int32 code = 1;
+}
+
+message Envelope {
+  oneof m {
+    Beacon b = 1;
+    ShellStart s = 2;
+    ShellData d = 3;
+    ShellExit e = 4;
+  }
+}
