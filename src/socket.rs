@@ -76,8 +76,10 @@ pub mod create {
             _sockfd = libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0 as c_int);
         }
 
-        if (_sockfd == libc::EACCES) {
-            return -1; // privileges problem
+        if (_sockfd < 0) {
+            let err = std::io::Error::last_os_error();
+            println!("Last error: {err}");
+            panic!("Err!");
         }
         unsafe {
             _connect_socket(_sockfd, _ip, port);
