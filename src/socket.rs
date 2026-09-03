@@ -1,7 +1,5 @@
 // https://developer.apple.com/library/archive/documentation/NetworkingInternet/Conceptual/NetworkingTopics/Articles/UsingSocketsandSocketStreams.html
 
-// I do not have the ios dev headers on this computer so i will use posix API
-
 /*
 the article above:
 Use POSIX calls if cross-platform portability is required.
@@ -14,12 +12,15 @@ Note: POSIX networking does not activate the cellular radio on iOS. For this rea
  */
 
 /* Documntation:
-  open_tcp returns an opaque handle that must be used with sockets::io::write.
-*/
 
+*/
+enum SockStatus {
+    Initialised,
+    Uninitialied, // same as inactive
+}
 pub struct Sock {
     sock: std::os::unix::io::RawFd,
-    initialised: bool,
+    sock_status: SockStatus,
 }
 
 impl Sock {
@@ -102,13 +103,17 @@ impl Sock {
         _sockfd
     } // internal
 
+    fn _change_sock_status(&mut self, _new_sock_status: SockStatus) {
+        self.sock_status = _new_sock_status;
+    }
+
     pub fn new(ip: &str, port: u16) -> Self {
         let mut _s = Sock {
             sock: 0,
-            initialised: false,
+            sock_status: SockStatus::Uninitialied,
         };
         _s.sock = unsafe { self::Sock::_open(ip, port) };
-        _s.initialised = true;
+        self::Sock::_change_sock_status(&mut _s, SockStatus::Initialised);
 
         _s
     }
@@ -132,12 +137,12 @@ impl Sock {
         res
     }
 
-    pub fn read(&self, buffer: &[u8]) -> libc::ssize_t {
+    pub fn read(&self, buffer: &mut [u8]) -> libc::ssize_t {
         let res;
         unsafe {
             res = libc::read(
                 self.sock,
-                buffer.as_ptr() as *mut std::ffi::c_void,
+                buffer.as_mut_ptr() as *mut std::ffi::c_void,
                 buffer.len() as libc::size_t,
             );
         }
@@ -149,20 +154,18 @@ impl Sock {
 
         res
     }
+}
 
-    pub fn close(&self) -> libc::ssize_t {
-        // man 2 close
-        let res;
-
+impl Drop for Sock {
+    fn drop(&mut self) {
         unsafe {
-            res = libc::close(self.sock);
+            // man 2 close
+            if (libc::close(self.sock) < 0) {
+                eprintln!("Could not close socket.");
+                self::Sock::_err();
+            } else {
+                eprintln!("Closed socket!");
+            }
         }
-
-        if (res < 0) {
-            eprintln!("Could not close socket.");
-            self::Sock::_err();
-        }
-
-        res as libc::ssize_t
     }
 }
