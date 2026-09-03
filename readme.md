@@ -8,11 +8,11 @@
 
 ## Overview
 
-Ravenna is a minimal iOS command-and-control (C2) proof-of-concept designed for studying implant/operator architecture
+Ravenna is a iOS command-and-control (C2) proof-of-concept designed for studying implant/operator architecture
 in controlled lab environments. Built entirely in Rust using POSIX sockets and Protocol Buffers, it avoids Swift
-dependencies to minimize attack surface and maximize portability.
+dependencies to maximize portability.
 
-**Key Design Principles:**
+**Design Principles:**
 
 - **Transparency:** Clear, auditable code for educational purposes.
 - **Lab-Scoped:** Intended solely for authorized testing on owned devices.
