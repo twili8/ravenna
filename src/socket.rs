@@ -268,7 +268,7 @@ impl Sock {
 
     pub fn read_exact(&self, mut buffer: &mut [u8]) -> libc::ssize_t {
         // man 2 read:
-        // read can give back less than asked, so loop till full or closed.
+        // read can give back less than asked so loop till full or closed.
         let mut _total: libc::ssize_t = 0;
         while !buffer.is_empty() {
             let mut _one = [0u8; 4096];
@@ -301,7 +301,7 @@ impl Sock {
 
     pub fn write_all(&self, mut data: &[u8]) -> libc::ssize_t {
         // man 2 write:
-        // write can write less than asked, so loop till all sent.
+        // write can write less than asked so loop till all sent.
         let mut _total: libc::ssize_t = 0;
         while !data.is_empty() {
             let res;
