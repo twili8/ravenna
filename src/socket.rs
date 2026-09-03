@@ -1,13 +1,3 @@
-// https://developer.apple.com/library/archive/documentation/NetworkingInternet/Conceptual/NetworkingTopics/Articles/UsingSocketsandSocketStreams.html
-
-/*
-the article above:
-Use POSIX calls if cross-platform portability is required.
- */
-
-/* Documntation:
-
-*/
 use libc::sockaddr;
 
 enum SockStatus {
@@ -53,7 +43,8 @@ impl Sock {
             addr.sin_family = libc::AF_INET as u16;
             addr.sin_port = libc::htons(port);
             let octets = ipv4.octets();
-            addr.sin_addr.s_addr = u32::from_be_bytes(octets);
+            // s_addr wants network byte order, octets already are that
+            addr.sin_addr.s_addr = u32::from_ne_bytes(octets);
         } else {
             // Handle IPv6 or error
         }
@@ -142,8 +133,6 @@ impl Sock {
     pub fn accept(&self) -> Sock {
         // man 2 accept:
         // accept returns a fd to the new sock, the old one keeps listening.
-        // so we return a brand new Sock and leave self alone.
-        // maybe it will cause a problem with Drop ...
         let mut _addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
         let mut _len = size_of::<libc::sockaddr_in>() as libc::socklen_t;
 
@@ -151,7 +140,7 @@ impl Sock {
         unsafe {
             _fd = libc::accept(
                 self.sock as libc::c_int,
-                &mut _addr as *mut libc::sockaddr_in as *mut libc::sockaddr,
+                &mut _addr as *mut libc::sockaddr_in as *mut sockaddr,
                 &mut _len,
             );
         }
