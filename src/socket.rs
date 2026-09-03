@@ -40,7 +40,7 @@ impl Sock {
         let mut addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
         // we must ensure the IP is actually IPv4 because sockaddr_in is IPv4 only
         if let std::net::IpAddr::V4(ipv4) = ip {
-            addr.sin_family = libc::AF_INET as u16;
+            addr.sin_family = libc::AF_INET as u8 as libc::sa_family_t;
             addr.sin_port = libc::htons(port);
             let octets = ipv4.octets();
             // s_addr wants network byte order, octets already are that
