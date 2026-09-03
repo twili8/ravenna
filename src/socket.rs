@@ -18,8 +18,22 @@ enum SockStatus {
     Initialised,
     Uninitialied, // same as inactive
 }
+
+pub enum SockRole {
+    Client {
+        host: String,
+        port: u16,
+    },
+    Server {
+        interface: String,
+        port: u16,
+        backlog: u32,
+    },
+}
+
 pub struct Sock {
     sock: std::os::unix::io::RawFd,
+    role: SockRole,
     sock_status: SockStatus,
 }
 
@@ -36,7 +50,7 @@ impl Sock {
     are defined in <sys/socket.h>.
     */
 
-    unsafe fn _build_sock_addr(ip: std::net::IpAddr, port: u16) -> libc::sockaddr_in {
+    fn _build_sock_addr(ip: std::net::IpAddr, port: u16) -> libc::sockaddr_in {
         let mut addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
         // we must ensure the IP is actually IPv4 because sockaddr_in is IPv4 only
         if let std::net::IpAddr::V4(ipv4) = ip {
@@ -50,28 +64,24 @@ impl Sock {
         addr
     }
 
-    unsafe fn _connect_socket(
-        _socket: std::os::unix::io::RawFd,
-        ip: std::net::IpAddr,
-        port: u16,
-    ) -> i32 {
+    fn _connect_socket(_socket: std::os::unix::io::RawFd, ip: std::net::IpAddr, port: u16) -> i32 {
+        let _port: u16 = if port == 0 { 8080 } else { port };
+
+        let addr = self::Sock::_build_sock_addr(ip, _port);
+        let len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+        let res;
         unsafe {
-            let _port: u16 = if port == 0 { 8080 } else { port };
-
-            let addr = self::Sock::_build_sock_addr(ip, _port);
-            let len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
-
-            let res = libc::connect(
+            res = libc::connect(
                 _socket,
                 &addr as *const libc::sockaddr_in as *const libc::sockaddr,
                 len,
             );
-            if (res != 0) {
-                eprintln!("could not connect socket.");
-                Self::_err();
-            }
-            res
         }
+        if res != 0 {
+            eprintln!("could not connect socket.");
+            Self::_err();
+        }
+        res
     }
 
     fn _err() {
@@ -83,36 +93,104 @@ impl Sock {
         std::process::exit(1);
     }
 
-    unsafe fn _open(ip: &str, port: u16) -> std::os::unix::io::RawFd {
-        let _ip: std::net::IpAddr = ip.parse().expect("Invalid IP address.");
+    fn _build_socket_fd() -> std::os::unix::io::RawFd {
         let mut _sockfd: std::ffi::c_int = 0;
-        unsafe {
-            // file descriptor of to-be socket
-            _sockfd = libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0 as std::ffi::c_int);
-        }
 
-        if (_sockfd < 0) {
-            eprintln!("File descriptor is negative ({_sockfd})");
-            self::Sock::_err();
-        }
+        // hardcode tcp
+        _sockfd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0 as std::ffi::c_int) };
 
-        unsafe {
-            self::Sock::_connect_socket(_sockfd, _ip, port);
+        if _sockfd < 0 {
+            eprintln!("Could not create socket file descriptor.");
+            Sock::_err();
         }
 
         _sockfd
+    }
+
+    fn _open(_socket: std::os::unix::io::RawFd, ip: &str, port: u16) -> std::os::unix::io::RawFd {
+        let _ip: std::net::IpAddr = ip.parse().expect("Invalid IP address.");
+        self::Sock::_connect_socket(_socket, _ip, port);
+        _socket
     } // internal
+
+    fn _bind(&self, interface: String, port: u16) {
+        let sockaddr = self::Sock::_build_sock_addr(interface.parse().unwrap(), port);
+        let len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t; // hardcodes ipv4
+        let res;
+        unsafe {
+            res = libc::bind(
+                self.sock,
+                &sockaddr as *const libc::sockaddr_in as *const libc::sockaddr,
+                len,
+            );
+        }
+        if res < 0 {
+            // error path
+            eprintln!("Could not bind, error: ({res})");
+            self::Sock::_err();
+        }
+    }
+
+    fn _listen(&self) {
+        let backlog = match &self.role {
+            SockRole::Server { backlog, .. } => *backlog as std::ffi::c_int,
+            SockRole::Client { .. } => {
+                eprintln!("Cannot listen on a client socket.");
+                Self::_err();
+                return;
+            }
+        };
+
+        let res;
+
+        unsafe {
+            res = libc::listen(self.sock, backlog);
+        }
+        if res < 0 {
+            eprintln!("Could not listen on socket.");
+            Self::_err();
+        }
+    }
 
     fn _change_sock_status(&mut self, _new_sock_status: SockStatus) {
         self.sock_status = _new_sock_status;
     }
 
-    pub fn new(ip: &str, port: u16) -> Self {
-        let mut _s = Sock {
-            sock: 0,
-            sock_status: SockStatus::Uninitialied,
-        };
-        _s.sock = unsafe { self::Sock::_open(ip, port) };
+    pub fn new(sock_role: SockRole) -> Self {
+        let mut _s: Sock;
+        match &sock_role {
+            SockRole::Client { host, port } => {
+                _s = Sock {
+                    sock: 0,
+                    role: SockRole::Client {
+                        host: host.to_string(),
+                        port: *port,
+                    },
+                    sock_status: SockStatus::Uninitialied,
+                };
+                _s.sock = Self::_build_socket_fd();
+                _s.sock = self::Sock::_open(_s.sock, host, *port);
+            }
+            SockRole::Server {
+                interface,
+                port,
+                backlog,
+            } => {
+                _s = Sock {
+                    sock: 0,
+                    role: SockRole::Server {
+                        interface: interface.to_string(),
+                        port: *port,
+                        backlog: *backlog,
+                    },
+                    sock_status: SockStatus::Uninitialied,
+                };
+                _s.sock = Self::_build_socket_fd();
+                Self::_bind(&_s, interface.clone(), *port);
+                Self::_listen(&_s);
+            }
+        }
+
         self::Sock::_change_sock_status(&mut _s, SockStatus::Initialised);
 
         _s
@@ -158,14 +236,16 @@ impl Sock {
 
 impl Drop for Sock {
     fn drop(&mut self) {
+        let res;
         unsafe {
-            // man 2 close
-            if (libc::close(self.sock) < 0) {
-                eprintln!("Could not close socket.");
-                self::Sock::_err();
-            } else {
-                eprintln!("Closed socket!");
-            }
+            res = libc::close(self.sock);
+        }
+        // man 2 close
+        if res < 0 {
+            eprintln!("Could not close socket.");
+            self::Sock::_err();
+        } else {
+            eprintln!("Closed socket!");
         }
     }
 }
