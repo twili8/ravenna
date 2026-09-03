@@ -57,7 +57,7 @@ impl Sock {
             addr.sin_family = libc::AF_INET as u16;
             addr.sin_port = libc::htons(port);
             let octets = ipv4.octets();
-            addr.sin_addr.s_addr = u32::from_be_bytes(octets).to_be();
+            addr.sin_addr.s_addr = u32::from_be_bytes(octets);
         } else {
             // Handle IPv6 or error
         }
@@ -67,8 +67,8 @@ impl Sock {
     fn _connect_socket(_socket: std::os::unix::io::RawFd, ip: std::net::IpAddr, port: u16) -> i32 {
         let _port: u16 = if port == 0 { 8080 } else { port };
 
-        let addr = self::Sock::_build_sock_addr(ip, _port);
-        let len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+        let addr = Sock::_build_sock_addr(ip, _port);
+        let len = size_of::<libc::sockaddr_in>() as libc::socklen_t;
         let res;
         unsafe {
             res = libc::connect(
@@ -109,13 +109,13 @@ impl Sock {
 
     fn _open(_socket: std::os::unix::io::RawFd, ip: &str, port: u16) -> std::os::unix::io::RawFd {
         let _ip: std::net::IpAddr = ip.parse().expect("Invalid IP address.");
-        self::Sock::_connect_socket(_socket, _ip, port);
+        Sock::_connect_socket(_socket, _ip, port);
         _socket
     } // internal
 
     fn _bind(&self, interface: String, port: u16) {
-        let sockaddr = self::Sock::_build_sock_addr(interface.parse().unwrap(), port);
-        let len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t; // hardcodes ipv4
+        let sockaddr = Sock::_build_sock_addr(interface.parse().unwrap(), port);
+        let len = size_of::<libc::sockaddr_in>() as libc::socklen_t; // hardcodes ipv4
         let res;
         unsafe {
             res = libc::bind(
@@ -127,7 +127,7 @@ impl Sock {
         if res < 0 {
             // error path
             eprintln!("Could not bind, error: ({res})");
-            self::Sock::_err();
+            Sock::_err();
         }
     }
 
@@ -136,7 +136,7 @@ impl Sock {
             SockRole::Server { backlog, .. } => *backlog as std::ffi::c_int,
             SockRole::Client { .. } => {
                 eprintln!("Cannot listen on a client socket.");
-                Self::_err();
+                Sock::_err();
                 return;
             }
         };
@@ -169,7 +169,7 @@ impl Sock {
                     sock_status: SockStatus::Uninitialied,
                 };
                 _s.sock = Self::_build_socket_fd();
-                _s.sock = self::Sock::_open(_s.sock, host, *port);
+                _s.sock = Sock::_open(_s.sock, host, *port);
             }
             SockRole::Server {
                 interface,
@@ -191,7 +191,7 @@ impl Sock {
             }
         }
 
-        self::Sock::_change_sock_status(&mut _s, SockStatus::Initialised);
+        Sock::_change_sock_status(&mut _s, SockStatus::Initialised);
 
         _s
     }
@@ -210,7 +210,7 @@ impl Sock {
         if res < 0 {
             // error path
             eprintln!("Could not write, error: ({res})");
-            self::Sock::_err();
+            Sock::_err();
         }
         res
     }
@@ -227,7 +227,7 @@ impl Sock {
         if res < 0 {
             // error path
             eprintln!("Could not read, error: ({res})");
-            self::Sock::_err();
+            Sock::_err();
         }
 
         res
@@ -243,7 +243,7 @@ impl Drop for Sock {
         // man 2 close
         if res < 0 {
             eprintln!("Could not close socket.");
-            self::Sock::_err();
+            Sock::_err();
         } else {
             eprintln!("Closed socket!");
         }
