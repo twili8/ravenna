@@ -3,17 +3,13 @@
 /*
 the article above:
 Use POSIX calls if cross-platform portability is required.
-
-If you are writing networking code that runs exclusively in OS X and iOS, you should generally avoid POSIX networking calls, because they are harder to work with than higher-level APIs. However, if you are writing networking code that must be shared with other platforms, you can use the POSIX networking APIs so that you can use the same code everywhere.
-
-Never use synchronous POSIX networking APIs on the main thread of a GUI application. If you use synchronous networking calls in a GUI application, you must do so on a separate thread.
-
-Note: POSIX networking does not activate the cellular radio on iOS. For this reason, the POSIX networking API is generally discouraged in iOS.
  */
 
 /* Documntation:
 
 */
+use libc::sockaddr;
+
 enum SockStatus {
     Initialised,
     Uninitialied, // same as inactive
@@ -73,7 +69,7 @@ impl Sock {
         unsafe {
             res = libc::connect(
                 _socket,
-                &addr as *const libc::sockaddr_in as *const libc::sockaddr,
+                &addr as *const libc::sockaddr_in as *const sockaddr,
                 len,
             );
         }
@@ -114,6 +110,18 @@ impl Sock {
     } // internal
 
     fn _bind(&self, interface: String, port: u16) {
+        // man setsockopt:
+        // SO_REUSEADDR lets us re-bind fast after a restart
+        let _one: std::ffi::c_int = 1;
+        unsafe {
+            libc::setsockopt(
+                self.sock,
+                libc::SOL_SOCKET,
+                libc::SO_REUSEADDR,
+                &_one as *const std::ffi::c_int as *const std::ffi::c_void,
+                size_of::<std::ffi::c_int>() as libc::socklen_t,
+            );
+        }
         let sockaddr = Sock::_build_sock_addr(interface.parse().unwrap(), port);
         let len = size_of::<libc::sockaddr_in>() as libc::socklen_t; // hardcodes ipv4
         let res;
@@ -128,6 +136,38 @@ impl Sock {
             // error path
             eprintln!("Could not bind, error: ({res})");
             Sock::_err();
+        }
+    }
+
+    pub fn accept(&self) -> Sock {
+        // man 2 accept:
+        // accept returns a fd to the new sock, the old one keeps listening.
+        // so we return a brand new Sock and leave self alone.
+        // maybe it will cause a problem with Drop ...
+        let mut _addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+        let mut _len = size_of::<libc::sockaddr_in>() as libc::socklen_t;
+
+        let _fd;
+        unsafe {
+            _fd = libc::accept(
+                self.sock as libc::c_int,
+                &mut _addr as *mut libc::sockaddr_in as *mut libc::sockaddr,
+                &mut _len,
+            );
+        }
+        if _fd < 0 {
+            eprintln!("Could not accept.");
+            Sock::_err();
+        }
+
+        // the accepted sock has no role yet, mark it client-ish
+        Sock {
+            sock: _fd,
+            role: SockRole::Client {
+                host: "accepted".to_string(),
+                port: 0,
+            },
+            sock_status: SockStatus::Initialised,
         }
     }
 
@@ -196,6 +236,10 @@ impl Sock {
         _s
     }
 
+    pub fn fd(&self) -> std::os::unix::io::RawFd {
+        self.sock
+    }
+
     pub fn write(&self, data: &[u8]) -> libc::ssize_t {
         // send data to network sockets created with socket::create!
         let res: libc::ssize_t;
@@ -231,6 +275,63 @@ impl Sock {
         }
 
         res
+    }
+
+    pub fn read_exact(&self, mut buffer: &mut [u8]) -> libc::ssize_t {
+        // man 2 read:
+        // read can give back less than asked, so loop till full or closed.
+        let mut _total: libc::ssize_t = 0;
+        while !buffer.is_empty() {
+            let mut _one = [0u8; 4096];
+            let _want = std::cmp::min(buffer.len(), _one.len());
+            let res;
+            unsafe {
+                res = libc::read(
+                    self.sock,
+                    _one.as_mut_ptr() as *mut std::ffi::c_void,
+                    _want as libc::size_t,
+                );
+            }
+            if res < 0 {
+                eprintln!("Could not read, error: ({res})");
+                Sock::_err();
+            }
+            if res == 0 {
+                break; // other side closed
+            }
+            let _n = res as usize;
+            buffer[.._n].copy_from_slice(&_one[.._n]);
+            buffer = &mut buffer[_n..];
+            _total += res;
+            if _total > 0 && buffer.is_empty() {
+                break;
+            }
+        }
+        _total
+    }
+
+    pub fn write_all(&self, mut data: &[u8]) -> libc::ssize_t {
+        // man 2 write:
+        // write can write less than asked, so loop till all sent.
+        let mut _total: libc::ssize_t = 0;
+        while !data.is_empty() {
+            let res;
+            unsafe {
+                res = libc::write(
+                    self.sock,
+                    data.as_ptr() as *const std::ffi::c_void,
+                    data.len() as libc::size_t,
+                );
+            }
+            if res <= 0 {
+                eprintln!("Could not write, error: ({res})");
+                Sock::_err();
+            }
+            let _n = res as usize;
+            data = &data[_n..];
+            _total += res;
+        }
+        _total
     }
 }
 
