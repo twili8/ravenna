@@ -8,7 +8,7 @@ use crate::proto::Envelope;
 use prost::Message;
 
 // man 2 read/write:
-// read() can return less than you asked for, so we loop.
+// read() can return less than you asked for so we loop.
 
 pub fn send_msg(_sock: &crate::socket::Sock, _msg: &Envelope) {
     let mut _buf = Vec::new();
