@@ -1,4 +1,5 @@
-use libc::sockaddr;
+use libc::{sockaddr, ssize_t};
+use std::ffi::c_int;
 
 enum SockStatus {
     Initialised,
@@ -337,5 +338,31 @@ impl Drop for Sock {
         } else {
             eprintln!("Closed socket!");
         }
+    }
+}
+
+pub enum FdStreams {
+    Stdin = libc::STDIN_FILENO as isize,
+    Stdout = libc::STDOUT_FILENO as isize,
+    Stderr = libc::STDERR_FILENO as isize,
+}
+
+pub fn _write_to_std_stream(stream: FdStreams, _chunk: &[u8]) {
+    unsafe {
+        libc::write(
+            stream as c_int,
+            _chunk.as_ptr() as *const std::ffi::c_void,
+            _chunk.len(),
+        );
+    }
+}
+
+pub fn _read_from_std_stream(stream: FdStreams, _chunk: &mut [u8]) -> ssize_t {
+    unsafe {
+        libc::read(
+            stream as c_int,
+            _chunk.as_mut_ptr() as *mut std::ffi::c_void,
+            _chunk.len(),
+        )
     }
 }

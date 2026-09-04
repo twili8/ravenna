@@ -5,18 +5,12 @@ bind -> listen -> accept loop one implant at a time for v0.1.
 
 use ravenna::frame;
 use ravenna::proto::{Envelope, ShellData, envelope};
-use ravenna::socket::{Sock, SockRole};
+use ravenna::socket::{_read_from_std_stream, _write_to_std_stream, FdStreams, Sock, SockRole};
 use std::sync::Arc;
-
-fn _emit(_chunk: &[u8]) {
-    unsafe {
-        libc::write(1, _chunk.as_ptr() as *const std::ffi::c_void, _chunk.len());
-    }
-}
 
 fn _on_msg(_env: Envelope) -> bool {
     match _env.m {
-        Some(envelope::M::D(_d)) => _emit(&_d.chunk),
+        Some(envelope::M::D(_d)) => _write_to_std_stream(FdStreams::Stdout, &_d.chunk),
         Some(envelope::M::E(_e)) => {
             eprintln!("\nshell exited code={}", _e.code);
             return false;
@@ -39,7 +33,7 @@ fn _net_to_out(_sock: Arc<Sock>) {
 fn _stdin_to_net(_sock: Arc<Sock>) {
     let mut _in = [0u8; 4096];
     loop {
-        let _n = unsafe { libc::read(0, _in.as_mut_ptr() as *mut _, _in.len()) };
+        let _n = _read_from_std_stream(FdStreams::Stdin, &mut _in);
         if _n <= 0 {
             break;
         }
