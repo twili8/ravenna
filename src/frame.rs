@@ -5,13 +5,12 @@ so the other side knows where one message ends.
 */
 
 use crate::proto::Envelope;
-use crate::socket::Sock;
 use prost::Message;
 
 // man 2 read/write:
 // read() can return less than you asked for, so we loop.
 
-pub fn send_msg(_sock: &Sock, _msg: &Envelope) {
+pub fn send_msg(_sock: &crate::socket::Sock, _msg: &Envelope) {
     let mut _buf = Vec::new();
     _msg.encode(&mut _buf).unwrap();
 
@@ -21,7 +20,7 @@ pub fn send_msg(_sock: &Sock, _msg: &Envelope) {
     _sock.write_all(&_buf);
 }
 
-pub fn recv_msg(_sock: &Sock) -> Option<Envelope> {
+pub fn recv_msg(_sock: &crate::socket::Sock) -> Option<Envelope> {
     // read the 4 byte len first
     let mut _lenbuf = [0u8; 4];
     if _sock.read_exact(&mut _lenbuf) == 0 {
