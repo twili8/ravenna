@@ -42,7 +42,7 @@ It is written by hand as a programming exercise, no AI is used other than for th
 ### 1. Clone and Build
 
 ```sh
-git clone https://github.com/yourusername/ravenna.git
+git clone https://github.com/twili8/ravenna.git
 cd ravenna
 cargo build --release
 ```
